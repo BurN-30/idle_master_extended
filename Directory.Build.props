@@ -1,0 +1,15 @@
+<Project>
+  <!-- Shared settings so these .NET Framework 4.8 WinForms projects build with only the
+       .NET SDK installed (no Visual Studio, no machine-wide Developer Pack). -->
+  <PropertyGroup>
+    <!-- The .resx files embed binary resources (images/icons); the SDK resource
+         generator needs preserialized resources to emit them (fixes MSB3822/3823). -->
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- .NET Framework 4.8 reference assemblies (stand-in for the Developer Pack). -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- Runtime support for the preserialized binary resources above. -->
+    <PackageReference Include="System.Resources.Extensions" Version="8.0.0" />
+  </ItemGroup>
+</Project>
