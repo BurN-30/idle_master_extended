@@ -41,6 +41,7 @@ namespace IdleMasterExtended
             this.txtSteamParental = new System.Windows.Forms.TextBox();
             this.btnUpdate = new System.Windows.Forms.Button();
             this.btnView = new System.Windows.Forms.Button();
+            this.btnQuickLogin = new System.Windows.Forms.Button();
             this.ttHelp = new System.Windows.Forms.ToolTip(this.components);
             this.linkLabelWhatIsThis = new System.Windows.Forms.LinkLabel();
             this.SuspendLayout();
@@ -125,9 +126,21 @@ namespace IdleMasterExtended
         "ount.");
             this.btnView.UseVisualStyleBackColor = true;
             this.btnView.Click += new System.EventHandler(this.btnView_Click);
-            // 
+            //
+            // btnQuickLogin
+            //
+            this.btnQuickLogin.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.btnQuickLogin.Location = new System.Drawing.Point(156, 113);
+            this.btnQuickLogin.Name = "btnQuickLogin";
+            this.btnQuickLogin.Size = new System.Drawing.Size(120, 23);
+            this.btnQuickLogin.TabIndex = 9;
+            this.btnQuickLogin.Text = "Quick Login";
+            this.ttHelp.SetToolTip(this.btnQuickLogin, "Read your Steam session automatically from Chrome or Edge.");
+            this.btnQuickLogin.UseVisualStyleBackColor = true;
+            this.btnQuickLogin.Click += new System.EventHandler(this.btnQuickLogin_Click);
+            //
             // ttHelp
-            // 
+            //
             this.ttHelp.AutoPopDelay = 9000;
             this.ttHelp.InitialDelay = 500;
             this.ttHelp.ReshowDelay = 100;
@@ -151,6 +164,7 @@ namespace IdleMasterExtended
             this.ClientSize = new System.Drawing.Size(415, 148);
             this.Controls.Add(this.linkLabelWhatIsThis);
             this.Controls.Add(this.btnUpdate);
+            this.Controls.Add(this.btnQuickLogin);
             this.Controls.Add(this.btnView);
             this.Controls.Add(this.txtSteamParental);
             this.Controls.Add(this.txtSteamLoginSecure);
@@ -179,6 +193,7 @@ namespace IdleMasterExtended
         private TextBox txtSteamLoginSecure;
         private TextBox txtSteamParental;
         private Button btnView;
+        private Button btnQuickLogin;
         private Button btnUpdate;
         private ToolTip ttHelp;
         private LinkLabel linkLabelWhatIsThis;

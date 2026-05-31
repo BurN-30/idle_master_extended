@@ -335,6 +335,15 @@ your Steam account.</value>
   <data name="validate_failed" xml:space="preserve">
     <value>The data you've entered isn't valid.  Please try again.</value>
   </data>
+  <data name="quick_login" xml:space="preserve">
+    <value>Quick Login</value>
+  </data>
+  <data name="quick_login_close_browser" xml:space="preserve">
+    <value>{0} needs to be closed so its Steam cookies can be read. Close it now?</value>
+  </data>
+  <data name="quick_login_failed" xml:space="preserve">
+    <value>No Steam session was found in Chrome or Edge. Log in to Steam in your browser, then run Quick Login again.</value>
+  </data>
   <data name="validating" xml:space="preserve">
     <value>Validating...</value>
   </data>

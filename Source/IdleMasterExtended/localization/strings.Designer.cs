@@ -739,6 +739,33 @@ namespace IdleMasterExtended.localization {
                 return ResourceManager.GetString("validating", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Quick Login.
+        /// </summary>
+        internal static string quick_login {
+            get {
+                return ResourceManager.GetString("quick_login", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to {0} needs to be closed so its Steam cookies can be read..
+        /// </summary>
+        internal static string quick_login_close_browser {
+            get {
+                return ResourceManager.GetString("quick_login_close_browser", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to No Steam session was found in Chrome or Edge..
+        /// </summary>
+        internal static string quick_login_failed {
+            get {
+                return ResourceManager.GetString("quick_login_failed", resourceCulture);
+            }
+        }
         
         /// <summary>
         ///   Looks up a localized string similar to &amp;Whitelist.

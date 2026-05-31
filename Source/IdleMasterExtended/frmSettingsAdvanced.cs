@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IdleMasterExtended.Properties;
+using IdleMasterExtended.Utilities;
 
 namespace IdleMasterExtended
 {
@@ -31,6 +34,7 @@ namespace IdleMasterExtended
         {
             // Localize Form
             btnUpdate.Text = localization.strings.update;
+            btnQuickLogin.Text = localization.strings.quick_login;
             this.Text = localization.strings.auth_data;
             ttHelp.SetToolTip(btnView, localization.strings.cookie_warning);
 
@@ -44,9 +48,9 @@ namespace IdleMasterExtended
 
             // Buttons
             FlatStyle buttonStyle = customTheme ? FlatStyle.Flat : FlatStyle.Standard;
-            btnView.FlatStyle = btnUpdate.FlatStyle = buttonStyle;
-            btnView.BackColor = btnUpdate.BackColor = this.BackColor;
-            btnView.ForeColor = btnUpdate.ForeColor = this.ForeColor;
+            btnView.FlatStyle = btnUpdate.FlatStyle = btnQuickLogin.FlatStyle = buttonStyle;
+            btnView.BackColor = btnUpdate.BackColor = btnQuickLogin.BackColor = this.BackColor;
+            btnView.ForeColor = btnUpdate.ForeColor = btnQuickLogin.ForeColor = this.ForeColor;
             btnView.Image = customTheme ? Resources.imgView_w : Resources.imgView;
 
             // Links
@@ -159,6 +163,112 @@ namespace IdleMasterExtended
             btnUpdate.Text = localization.strings.validating;
 
             await CheckAndSave();
+        }
+
+        private async void btnQuickLogin_Click(object sender, EventArgs e)
+        {
+            SetControlsEnabled(false);
+            var caption = btnQuickLogin.Text;
+            btnQuickLogin.Text = "...";
+
+            try
+            {
+                if (await TryFillFromBrowsersAsync())
+                {
+                    btnUpdate.Text = localization.strings.validating;
+                    await CheckAndSave();
+                }
+                else
+                {
+                    MessageBox.Show(localization.strings.quick_login_failed);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception(ex, "frmSettingsAdvanced -> btnQuickLogin_Click");
+                MessageBox.Show(localization.strings.quick_login_failed);
+            }
+            finally
+            {
+                btnQuickLogin.Text = caption;
+                SetControlsEnabled(true);
+            }
+        }
+
+        /// <summary>
+        /// Looks through the installed Chromium browsers for a stored Steam web session and,
+        /// when found, fills the sessionid / steamLoginSecure fields. Returns true on success.
+        /// </summary>
+        private async Task<bool> TryFillFromBrowsersAsync()
+        {
+            foreach (var browser in new[] { BrowserType.Chrome, BrowserType.Edge })
+            {
+                if (!BrowserCookieExtractor.IsAvailable(browser))
+                {
+                    continue;
+                }
+
+                // The browser cannot be running on the target profile, otherwise the headless
+                // instance just attaches to it and the debug port never opens.
+                if (BrowserCookieExtractor.IsRunning(browser))
+                {
+                    var confirm = MessageBox.Show(
+                        string.Format(localization.strings.quick_login_close_browser, BrowserCookieExtractor.DisplayName(browser)),
+                        "Quick Login",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (confirm != DialogResult.Yes)
+                    {
+                        continue;
+                    }
+                    BrowserCookieExtractor.Close(browser);
+                }
+
+                foreach (var profile in BrowserCookieExtractor.GetProfiles(browser))
+                {
+                    var cookies = await BrowserCookieExtractor.GetCookiesAsync(browser, profile);
+                    if (ApplySteamCookies(cookies))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Fills the form from the Steam cookies in the list. Returns false if none were found.</summary>
+        private bool ApplySteamCookies(List<BrowserCookie> cookies)
+        {
+            var steam = cookies
+                .Where(c => !string.IsNullOrEmpty(c.Domain) &&
+                            c.Domain.IndexOf("steamcommunity.com", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            var loginSecure = steam.FirstOrDefault(c => c.Name == "steamLoginSecure" && !string.IsNullOrEmpty(c.Value));
+            if (loginSecure == null)
+            {
+                return false;
+            }
+
+            txtSteamLoginSecure.Text = loginSecure.Value;
+
+            var sessionId = steam.FirstOrDefault(c => c.Name == "sessionid" && !string.IsNullOrEmpty(c.Value));
+            if (sessionId != null)
+            {
+                txtSessionID.Text = sessionId.Value;
+            }
+            return true;
+        }
+
+        private void SetControlsEnabled(bool enabled)
+        {
+            btnUpdate.Enabled = enabled;
+            btnView.Enabled = enabled;
+            btnQuickLogin.Enabled = enabled;
+            txtSessionID.Enabled = enabled;
+            txtSteamLoginSecure.Enabled = enabled;
+            txtSteamParental.Enabled = enabled;
         }
 
         private void linkLabelWhatIsThis_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
