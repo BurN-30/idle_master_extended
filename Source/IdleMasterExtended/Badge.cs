@@ -36,7 +36,14 @@ namespace IdleMasterExtended
             if (InIdle)
                 return idleProcess;
 
-            idleProcess = Process.Start(new ProcessStartInfo("steam-idle.exe", AppId.ToString()) { WindowStyle = ProcessWindowStyle.Hidden });
+            // Resolve steam-idle.exe next to this executable so it is found regardless of the
+            // current working directory (otherwise idling silently fails with "file not found").
+            var steamIdlePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "steam-idle.exe");
+            idleProcess = Process.Start(new ProcessStartInfo(steamIdlePath, AppId.ToString())
+            {
+                WindowStyle = ProcessWindowStyle.Hidden,
+                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+            });
             return idleProcess;
         }
 
