@@ -223,6 +223,8 @@ namespace IdleMasterExtended
                         continue;
                     }
                     BrowserCookieExtractor.Close(browser);
+                    // Give the browser a moment to release its profile lock before we relaunch it headlessly.
+                    await Task.Delay(2000);
                 }
 
                 foreach (var profile in BrowserCookieExtractor.GetProfiles(browser))

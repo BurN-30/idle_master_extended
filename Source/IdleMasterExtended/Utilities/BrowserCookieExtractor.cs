@@ -237,7 +237,9 @@ namespace IdleMasterExtended.Utilities
                 {
                     using (var client = new WebClient())
                     {
-                        var json = await client.DownloadStringTaskAsync("http://localhost:" + port + "/json/version").ConfigureAwait(false);
+                        // Use 127.0.0.1 explicitly: "localhost" can resolve to IPv6 (::1) while the
+                        // DevTools endpoint only listens on IPv4, which silently fails to connect.
+                        var json = await client.DownloadStringTaskAsync("http://127.0.0.1:" + port + "/json/version").ConfigureAwait(false);
                         var url = (string)JObject.Parse(json)["webSocketDebuggerUrl"];
                         if (!string.IsNullOrEmpty(url))
                         {

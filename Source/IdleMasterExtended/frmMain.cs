@@ -426,6 +426,10 @@ namespace IdleMasterExtended
             catch (Exception ex)
             {
                 Logger.Exception(ex, "frmMain -> StartIdle -> load pic, for id = " + CurrentBadge.AppId);
+                // The banner failed to load (e.g. a new game whose image returns 404): clear it
+                // instead of leaving the previous game's picture on screen.
+                picApp.Image = null;
+                picApp.Visible = false;
             }
 
             // Update label controls
