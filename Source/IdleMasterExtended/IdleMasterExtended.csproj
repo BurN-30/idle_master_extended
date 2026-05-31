@@ -7,6 +7,7 @@
     <RootNamespace>IdleMasterExtended</RootNamespace>
     <AssemblyName>IdleMasterExtended</AssemblyName>
     <ApplicationIcon>logo1.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <StartupObject>IdleMasterExtended.Program</StartupObject>
     <LangVersion>7.3</LangVersion>
     <Prefer32Bit>false</Prefer32Bit>
