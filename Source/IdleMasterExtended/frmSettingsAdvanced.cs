@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -173,14 +173,38 @@ namespace IdleMasterExtended
 
             try
             {
-                if (await TryFillFromBrowsersAsync())
+                if (!SteamLoginSession.IsBrowserAvailable())
                 {
-                    btnUpdate.Text = localization.strings.validating;
-                    await CheckAndSave();
+                    MessageBox.Show("Quick Login needs Google Chrome or Microsoft Edge installed.", "Quick Login");
+                    return;
                 }
-                else
+
+                // Open a dedicated browser window on the Steam login page. The user signs in there
+                // (or is already signed in from a previous Quick Login), then confirms here.
+                using (var session = await SteamLoginSession.StartAsync())
                 {
-                    MessageBox.Show(localization.strings.quick_login_failed);
+                    if (session == null)
+                    {
+                        MessageBox.Show(localization.strings.quick_login_failed);
+                        return;
+                    }
+
+                    MessageBox.Show(
+                        "A browser window has opened on the Steam login page.\r\n\r\nSign in to Steam there, then click OK.",
+                        "Quick Login",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    var cookies = await session.GetCookiesAsync();
+                    if (ApplySteamCookies(cookies))
+                    {
+                        btnUpdate.Text = localization.strings.validating;
+                        await CheckAndSave();
+                    }
+                    else
+                    {
+                        MessageBox.Show(localization.strings.quick_login_failed);
+                    }
                 }
             }
             catch (Exception ex)
@@ -193,50 +217,6 @@ namespace IdleMasterExtended
                 btnQuickLogin.Text = caption;
                 SetControlsEnabled(true);
             }
-        }
-
-        /// <summary>
-        /// Looks through the installed Chromium browsers for a stored Steam web session and,
-        /// when found, fills the sessionid / steamLoginSecure fields. Returns true on success.
-        /// </summary>
-        private async Task<bool> TryFillFromBrowsersAsync()
-        {
-            foreach (var browser in new[] { BrowserType.Chrome, BrowserType.Edge })
-            {
-                if (!BrowserCookieExtractor.IsAvailable(browser))
-                {
-                    continue;
-                }
-
-                // The browser cannot be running on the target profile, otherwise the headless
-                // instance just attaches to it and the debug port never opens.
-                if (BrowserCookieExtractor.IsRunning(browser))
-                {
-                    var confirm = MessageBox.Show(
-                        string.Format(localization.strings.quick_login_close_browser, BrowserCookieExtractor.DisplayName(browser)),
-                        "Quick Login",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
-
-                    if (confirm != DialogResult.Yes)
-                    {
-                        continue;
-                    }
-                    BrowserCookieExtractor.Close(browser);
-                    // Give the browser a moment to release its profile lock before we relaunch it headlessly.
-                    await Task.Delay(2000);
-                }
-
-                foreach (var profile in BrowserCookieExtractor.GetProfiles(browser))
-                {
-                    var cookies = await BrowserCookieExtractor.GetCookiesAsync(browser, profile);
-                    if (ApplySteamCookies(cookies))
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
         }
 
         /// <summary>Fills the form from the Steam cookies in the list. Returns false if none were found.</summary>

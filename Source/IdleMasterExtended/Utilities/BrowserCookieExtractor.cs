@@ -13,7 +13,7 @@ using Newtonsoft.Json.Linq;
 
 namespace IdleMasterExtended.Utilities
 {
-    /// <summary>Chromium-based browsers we can read the Steam web session from.</summary>
+    /// <summary>Chromium-based browsers we can drive for the login window.</summary>
     public enum BrowserType
     {
         Chrome,
@@ -29,18 +29,104 @@ namespace IdleMasterExtended.Utilities
     }
 
     /// <summary>
-    /// Reads the stored Steam session cookies (sessionid + steamLoginSecure) from a
-    /// Chromium-based browser by launching it headlessly with the DevTools
-    /// remote-debugging endpoint and querying it over the Chrome DevTools Protocol.
+    /// Opens a dedicated, visible Chromium window (Chrome or Edge) on the Steam login page so
+    /// the user can sign in, then reads the resulting session cookies over the Chrome DevTools
+    /// Protocol.
     ///
-    /// Everything stays local: the cookies are only used to fill the login form, they
-    /// are never sent anywhere. The browser must not already be running on the target
-    /// profile (Chromium would attach to the existing instance instead of enabling the
-    /// debug port), hence <see cref="IsRunning"/> / <see cref="Close"/> below.
+    /// Why a dedicated profile rather than reading the user's everyday browser profile:
+    /// recent Chrome refuses remote-debugging on the default profile AND encrypts its cookies
+    /// with App-Bound Encryption, so an existing profile cannot be read by a third-party tool.
+    /// A separate --user-data-dir is not subject to the remote-debugging restriction, and
+    /// because the sign-in happens live in that session the cookies are readable. The profile
+    /// is reused between runs, so the user stays signed in and later logins are instant.
+    ///
+    /// Everything stays local: the cookies only fill the login form, they are never sent anywhere.
     /// </summary>
-    public static class BrowserCookieExtractor
+    public sealed class SteamLoginSession : IDisposable
     {
-        private const int TimeoutSeconds = 30;
+        private const string SteamLoginUrl = "https://steamcommunity.com/login/home/?goto=";
+        private const int PortTimeoutSeconds = 20;
+
+        private readonly Process _process;
+        private readonly string _debuggerUrl;
+
+        private SteamLoginSession(Process process, string debuggerUrl)
+        {
+            _process = process;
+            _debuggerUrl = debuggerUrl;
+        }
+
+        /// <summary>The dedicated, reused browser profile (kept so the user stays signed in).</summary>
+        private static string ProfileDirectory
+        {
+            get
+            {
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "IdleMasterExtended", "LoginBrowser");
+            }
+        }
+
+        public static bool IsBrowserAvailable()
+        {
+            return GetExecutablePath(BrowserType.Chrome) != null || GetExecutablePath(BrowserType.Edge) != null;
+        }
+
+        /// <summary>
+        /// Launches the Steam login page in a dedicated browser window and waits for the
+        /// DevTools endpoint. Returns null if no supported browser is installed or the
+        /// endpoint never comes up.
+        /// </summary>
+        public static async Task<SteamLoginSession> StartAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var executable = GetExecutablePath(BrowserType.Chrome) ?? GetExecutablePath(BrowserType.Edge);
+            if (executable == null)
+            {
+                return null;
+            }
+
+            var port = GetFreeTcpPort();
+            Process process = null;
+            try
+            {
+                Directory.CreateDirectory(ProfileDirectory);
+                process = LaunchVisible(executable, ProfileDirectory, port);
+
+                var debuggerUrl = await GetWebSocketDebuggerUrlAsync(port, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(debuggerUrl))
+                {
+                    TryKill(process);
+                    return null;
+                }
+                return new SteamLoginSession(process, debuggerUrl);
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception(ex, "SteamLoginSession.StartAsync");
+                TryKill(process);
+                return null;
+            }
+        }
+
+        /// <summary>Reads the current cookies of the login session.</summary>
+        public async Task<List<BrowserCookie>> GetCookiesAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            try
+            {
+                var json = await SendDevToolsCommandAsync(_debuggerUrl, "{\"id\":1,\"method\":\"Storage.getCookies\"}", cancellationToken).ConfigureAwait(false);
+                return ParseCookies(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception(ex, "SteamLoginSession.GetCookiesAsync");
+                return new List<BrowserCookie>();
+            }
+        }
+
+        public void Dispose()
+        {
+            TryKill(_process);
+        }
 
         public static string DisplayName(BrowserType browser)
         {
@@ -52,17 +138,6 @@ namespace IdleMasterExtended.Utilities
             }
         }
 
-        private static string ProcessName(BrowserType browser)
-        {
-            switch (browser)
-            {
-                case BrowserType.Chrome: return "chrome";
-                case BrowserType.Edge: return "msedge";
-                default: return null;
-            }
-        }
-
-        /// <summary>Path to the browser executable, or null if it is not installed.</summary>
         public static string GetExecutablePath(BrowserType browser)
         {
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
@@ -94,142 +169,30 @@ namespace IdleMasterExtended.Utilities
             return candidates.FirstOrDefault(File.Exists);
         }
 
-        private static string GetUserDataDir(BrowserType browser)
+        private static Process LaunchVisible(string executable, string profileDirectory, int port)
         {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            switch (browser)
-            {
-                case BrowserType.Chrome: return Path.Combine(localAppData, @"Google\Chrome\User Data");
-                case BrowserType.Edge: return Path.Combine(localAppData, @"Microsoft\Edge\User Data");
-                default: return null;
-            }
-        }
-
-        /// <summary>Profile directories (e.g. "Default", "Profile 1") that hold a cookie store.</summary>
-        public static List<string> GetProfiles(BrowserType browser)
-        {
-            var profiles = new List<string>();
-            var userDataDir = GetUserDataDir(browser);
-            if (string.IsNullOrEmpty(userDataDir) || !Directory.Exists(userDataDir))
-            {
-                return profiles;
-            }
-
-            foreach (var dir in Directory.GetDirectories(userDataDir))
-            {
-                if (File.Exists(Path.Combine(dir, "Network", "Cookies")) ||
-                    File.Exists(Path.Combine(dir, "Cookies")))
-                {
-                    profiles.Add(dir);
-                }
-            }
-            return profiles;
-        }
-
-        /// <summary>True when the browser is installed and has at least one profile with cookies.</summary>
-        public static bool IsAvailable(BrowserType browser)
-        {
-            return GetExecutablePath(browser) != null && GetProfiles(browser).Count > 0;
-        }
-
-        public static bool IsRunning(BrowserType browser)
-        {
-            return Process.GetProcessesByName(ProcessName(browser)).Length > 0;
-        }
-
-        /// <summary>Closes every window of the given browser (asking nicely first, then forcing).</summary>
-        public static void Close(BrowserType browser)
-        {
-            foreach (var process in Process.GetProcessesByName(ProcessName(browser)))
-            {
-                try
-                {
-                    if (!process.CloseMainWindow() || !process.WaitForExit(2000))
-                    {
-                        process.Kill();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Exception(ex, "BrowserCookieExtractor.Close");
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Launches the given profile headlessly and returns its cookies via the DevTools
-        /// protocol. Returns an empty list on any failure; the browser process is always
-        /// terminated before returning.
-        /// </summary>
-        public static async Task<List<BrowserCookie>> GetCookiesAsync(BrowserType browser, string profileDirectory, CancellationToken cancellationToken = default(CancellationToken))
-        {
-            var executable = GetExecutablePath(browser);
-            if (executable == null)
-            {
-                return new List<BrowserCookie>();
-            }
-
-            var port = GetFreeTcpPort();
-            Process process = null;
-            try
-            {
-                process = StartHeadless(executable, profileDirectory, port);
-
-                var debuggerUrl = await GetWebSocketDebuggerUrlAsync(port, cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrEmpty(debuggerUrl))
-                {
-                    return new List<BrowserCookie>();
-                }
-
-                var response = await SendDevToolsCommandAsync(debuggerUrl, "{\"id\":1,\"method\":\"Storage.getCookies\"}", cancellationToken).ConfigureAwait(false);
-                return ParseCookies(response);
-            }
-            catch (Exception ex)
-            {
-                Logger.Exception(ex, "BrowserCookieExtractor.GetCookiesAsync");
-                return new List<BrowserCookie>();
-            }
-            finally
-            {
-                TryKill(process);
-            }
-        }
-
-        private static Process StartHeadless(string executable, string profileDirectory, int port)
-        {
-            var userDataDir = Directory.GetParent(profileDirectory).FullName;
-            var profileName = Path.GetFileName(profileDirectory);
-
             var startInfo = new ProcessStartInfo
             {
                 FileName = executable,
                 UseShellExecute = false,
-                CreateNoWindow = true,
                 Arguments = string.Join(" ", new[]
                 {
-                    "--headless=new",
-                    "--disable-gpu",
                     "--no-first-run",
                     "--no-default-browser-check",
                     "--remote-debugging-port=" + port,
                     "--remote-allow-origins=*",
-                    "--user-data-dir=\"" + userDataDir + "\"",
-                    "--profile-directory=\"" + profileName + "\"",
-                    "about:blank"
+                    "--user-data-dir=\"" + profileDirectory + "\"",
+                    "--new-window",
+                    "\"" + SteamLoginUrl + "\""
                 })
             };
-
             return Process.Start(startInfo);
         }
 
-        /// <summary>Polls the DevTools HTTP endpoint until it returns the browser WebSocket URL.</summary>
+        /// <summary>Polls the DevTools HTTP endpoint (on 127.0.0.1, not "localhost", to avoid IPv6) until it returns the WebSocket URL.</summary>
         private static async Task<string> GetWebSocketDebuggerUrlAsync(int port, CancellationToken cancellationToken)
         {
-            var deadline = DateTime.UtcNow.AddSeconds(TimeoutSeconds);
+            var deadline = DateTime.UtcNow.AddSeconds(PortTimeoutSeconds);
             while (DateTime.UtcNow < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -237,8 +200,6 @@ namespace IdleMasterExtended.Utilities
                 {
                     using (var client = new WebClient())
                     {
-                        // Use 127.0.0.1 explicitly: "localhost" can resolve to IPv6 (::1) while the
-                        // DevTools endpoint only listens on IPv4, which silently fails to connect.
                         var json = await client.DownloadStringTaskAsync("http://127.0.0.1:" + port + "/json/version").ConfigureAwait(false);
                         var url = (string)JObject.Parse(json)["webSocketDebuggerUrl"];
                         if (!string.IsNullOrEmpty(url))
@@ -249,7 +210,6 @@ namespace IdleMasterExtended.Utilities
                 }
                 catch
                 {
-                    // Endpoint not ready yet; wait and retry.
                     await Task.Delay(500, cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -261,7 +221,7 @@ namespace IdleMasterExtended.Utilities
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                timeout.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
                 using (var socket = new ClientWebSocket())
                 {
                     await socket.ConnectAsync(new Uri(debuggerUrl), timeout.Token).ConfigureAwait(false);
@@ -287,7 +247,6 @@ namespace IdleMasterExtended.Utilities
                         var text = message.ToString();
                         message.Clear();
 
-                        // CDP may push events before our reply; keep only the response to id 1.
                         try
                         {
                             var json = JObject.Parse(text);
@@ -299,7 +258,7 @@ namespace IdleMasterExtended.Utilities
                         }
                         catch
                         {
-                            // Not the JSON we expect; ignore and keep reading.
+                            // Not the response we want (CDP event); keep reading.
                         }
                     }
                     return null;
@@ -315,7 +274,7 @@ namespace IdleMasterExtended.Utilities
             }
             catch
             {
-                // Closing is best-effort.
+                // Best-effort.
             }
         }
 
@@ -376,7 +335,7 @@ namespace IdleMasterExtended.Utilities
             }
             catch (Exception ex)
             {
-                Logger.Exception(ex, "BrowserCookieExtractor.TryKill");
+                Logger.Exception(ex, "SteamLoginSession.TryKill");
             }
             finally
             {
