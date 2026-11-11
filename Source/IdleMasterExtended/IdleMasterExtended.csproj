@@ -31,13 +31,22 @@
     <Reference Include="System.Deployment" />
   </ItemGroup>
 
-  <!-- Was a PostBuildEvent: pull in steam-idle.exe (built separately) and the native
-       Steam API so the app can launch the idler. Satellite language folders are left
+  <!-- Build steam-idle first (build order only, its assembly is not referenced). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\steam-idle Source\steam-idle\steam-idle.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- Was a PostBuildEvent: pull in steam-idle.exe and the native Steam API so the app can
+       launch the idler. steam-idle.exe.config is required too: it carries the binding
+       redirect for System.Resources.Extensions, without it the helper dies on startup
+       (FileLoadException) and no game is ever idled. Satellite language folders are left
        in their standard per-culture directories (the .NET runtime resolves them there). -->
   <Target Name="CopyRuntimeDeps" AfterTargets="Build">
-    <Copy SourceFiles="..\..\steam-idle Source\steam-idle\bin\$(Configuration)\steam-idle.exe"
-          DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true"
-          Condition="Exists('..\..\steam-idle Source\steam-idle\bin\$(Configuration)\steam-idle.exe')" />
+    <Copy SourceFiles="..\..\steam-idle Source\steam-idle\bin\$(Configuration)\steam-idle.exe;..\..\steam-idle Source\steam-idle\bin\$(Configuration)\steam-idle.exe.config"
+          DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="..\..\Dependencies\steam_api64.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 
