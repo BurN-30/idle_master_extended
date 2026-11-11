@@ -6,6 +6,30 @@
 >
 > Thank you.
 
+## About this fork
+
+This fork keeps Idle Master Extended working on current Windows and Steam:
+
+- builds with the .NET SDK alone (no Visual Studio);
+- `steam-idle.exe` is shipped with its `.config` file, without which it crashed on start and no game was idled;
+- a crash of the idling helper is written to `error.log` instead of failing silently;
+- a network or Steam outage no longer wipes the saved login, the app retries instead;
+- badge pages are read in English so that hours are parsed correctly whatever the account language;
+- a damaged `user.config` (after a crash or power cut) is set aside instead of breaking the app;
+- **Quick Login** opens a dedicated Chrome or Edge window on the Steam login page and reads the session from it.
+
+Steam's `steamLoginSecure` cookie is only valid for about 24 hours. After that the app shows
+"not connected": use **Quick Login** again.
+
+### Build
+
+```
+dotnet build "Source/IdleMasterExtended/IdleMasterExtended.csproj" -c Release
+```
+
+This also builds `steam-idle`. Everything needed is in `Source/IdleMasterExtended/bin/Release/`;
+keep all its files together and run `IdleMasterExtended.exe` with Steam open and signed in.
+
 [![Build status](https://ci.appveyor.com/api/projects/status/96wf12emnlbmo4sj?svg=true)](https://ci.appveyor.com/project/JonasNilson/idle-master-extended)
 ![Github All Releases](https://img.shields.io/github/downloads/JonasNilson/idle_master_extended/total.svg)
 
