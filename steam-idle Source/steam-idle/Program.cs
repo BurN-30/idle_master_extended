@@ -14,6 +14,8 @@ namespace steam_idle
 
             if (!SteamAPI.Init())
             {
+                // Non-zero so Idle Master can tell that this game is not being idled.
+                Environment.ExitCode = 1;
                 return;
             }
 

@@ -44,7 +44,37 @@ namespace IdleMasterExtended
                 WindowStyle = ProcessWindowStyle.Hidden,
                 WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
             });
+
+            // A helper that dies on its own means the game is not idled at all; record why
+            // instead of failing silently. Exit code -1 is a deliberate Kill() and is ignored.
+            if (idleProcess != null)
+            {
+                var appId = AppId;
+                idleProcess.EnableRaisingEvents = true;
+                idleProcess.Exited += (sender, e) =>
+                {
+                    var exitCode = ((Process)sender).ExitCode;
+                    if (exitCode != 0 && exitCode != -1)
+                    {
+                        Logger.Exception(new Exception("steam-idle.exe exited with code " + exitCode + DescribeExitCode(exitCode)),
+                            "Badge -> Idle, steam-idle stopped unexpectedly for id = " + appId);
+                    }
+                };
+            }
             return idleProcess;
+        }
+
+        private static string DescribeExitCode(int exitCode)
+        {
+            switch (exitCode)
+            {
+                case 1:
+                    return " (SteamAPI.Init failed: Steam not running, another account, or game not owned)";
+                case unchecked((int)0xE0434352):
+                    return " (unhandled .NET exception, see the Windows Application event log)";
+                default:
+                    return string.Empty;
+            }
         }
 
         public void StopIdle()
