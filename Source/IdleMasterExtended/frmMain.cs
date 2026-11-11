@@ -1245,16 +1245,17 @@ namespace IdleMasterExtended
                 await LoadBadgesAsync();
                 StartIdle();
             }
+            else if (string.IsNullOrEmpty(Settings.Default.myProfileURL))
+            {
+                // Signed out (IsLogined cleared the expired or invalid cookies): ask for a new login.
+                ResetClientStatus();
+            }
             else
             {
-                if (string.IsNullOrEmpty(Settings.Default.myProfileURL))
-                {
-                    ResetClientStatus();
-                }
-                else
-                {
-                    await CookieClient.RefreshLoginToken();
-                }
+                // Steam did not answer: keep the session and retry after the badge reload countdown.
+                ResetFormDesign();
+                ReloadCount = 1;
+                tmrBadgeReload.Enabled = true;
             }
         }
 

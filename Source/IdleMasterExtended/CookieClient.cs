@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using HtmlAgilityPack;
 using IdleMasterExtended.Properties;
@@ -57,54 +58,43 @@ namespace IdleMasterExtended
         /// <returns><c>true</c> if there was information available that confirms the login as successful, otherwise <c>false</c></returns>
         public static async Task<bool> IsLogined()
         {
-            var document = new HtmlDocument();
+            var response = string.Empty;
 
             try
             {
-                var response = await GetHttpAsync(Settings.Default.myProfileURL);
-                document.LoadHtml(response);
+                response = await GetHttpAsync(Settings.Default.myProfileURL);
             }
             catch (Exception ex)
             {
                 Logger.Exception(ex, "CookieClient -> IsLogined, for url = " + Settings.Default.myProfileURL);
             }
 
+            if (string.IsNullOrWhiteSpace(response))
+            {
+                // Steam did not answer (no network, Steam maintenance, rate limit...): the login
+                // state is unknown, so keep the saved cookies and let the caller retry later.
+                return false;
+            }
+
+            var document = new HtmlDocument();
+            document.LoadHtml(response);
+
             // The 'notification_count' contains the Steam profile notifications count. Every logged in user should have it available.
             var notificationCountNode = document.DocumentNode.SelectSingleNode("//span[@class='notification_count']");
-
-            if (notificationCountNode is null || string.IsNullOrEmpty(notificationCountNode.InnerHtml))
-            {
-                // The user has no notification count available --> not logged in properly.
-                ClearCookies();
-                return false;
-            } 
-            else
+            if (notificationCountNode != null && !string.IsNullOrEmpty(notificationCountNode.InnerHtml))
             {
                 return true;
             }
-        }
 
-        public static async Task<bool> RefreshLoginToken()
-        {
-            var document = new HtmlDocument();
-
-            var cookies = new CookieContainer();
-            var target = new Uri("https://steamcommunity.com");
-
-            cookies.Add(new Cookie("Cookie", "steamRefresh_steam=" + Settings.Default.steamLoginSecure) { Domain = target.Host });
-
-            try
+            // Steam pages also expose the signed-in viewer as g_steamID = "<SteamID64>" (g_steamID = false when signed out).
+            var viewer = Regex.Match(response, @"\bg_steamID\s*=\s*[""'](\d{17})[""']");
+            if (viewer.Success && viewer.Groups[1].Value == SteamProfile.GetSteamId())
             {
-                var response = await GetHttpAsync("https://login.steampowered.com/jwt/refresh?redir=https%3A%2F%2Fsteamcommunity.com");
-                document.LoadHtml(response);
-                
                 return true;
             }
-            catch (Exception ex)
-            {
-                Logger.Exception(ex, "CookieClient -> RefreshToken, for url = " + Settings.Default.myProfileURL);
-            }
 
+            // Steam answered but the session is not signed in (expired or invalid cookies).
+            ClearCookies();
             return false;
         }
 
