@@ -106,7 +106,9 @@ namespace IdleMasterExtended
         {
             var document = new HtmlDocument();
             var profileLink = Settings.Default.myProfileURL + "/badges";
-            var pageURL = string.Format("{0}/?p={1}", profileLink, pageNumber);
+            // l=english: the parsing expects English number formats ("1.5 hrs"); a French page
+            // writes "1,5 h", which double.Parse would read as 15 hours.
+            var pageURL = string.Format("{0}/?p={1}&l=english", profileLink, pageNumber);
             var response = await CookieClient.GetHttpAsync(pageURL);
             CheckIfResponseIsNullWithRetryCount(response);
             document.LoadHtml(response);

@@ -88,7 +88,7 @@ namespace IdleMasterExtended
             try
             {
                 var document = new HtmlDocument();
-                var response = await CookieClient.GetHttpAsync(Settings.Default.myProfileURL + "/gamecards/" + StringId);
+                var response = await CookieClient.GetHttpAsync(Settings.Default.myProfileURL + "/gamecards/" + StringId + "/?l=english");
                 // Response should be empty. User should be unauthorised.
                 if (string.IsNullOrEmpty(response))
                 {
